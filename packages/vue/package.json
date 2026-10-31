@@ -1,0 +1,39 @@
+{
+  "name": "@tryabby/vue",
+  "version": "1.0.0",
+  "description": "Vue 3 composables integration for Abby A/B testing, Feature Flags, and Remote Config",
+  "main": "dist/index.js",
+  "files": ["dist"],
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "pnpm run build --watch",
+    "test": "vitest run"
+  },
+  "homepage": "https://docs.tryabby.com",
+  "keywords": ["abby", "vue", "ab-testing", "feature-flags", "remote-config"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "jsdom": "^20.0.3",
+    "tsconfig": "workspace:*",
+    "tsup": "^6.5.0",
+    "typescript": "5.5.4",
+    "vitest": "2.0.5",
+    "vue": "^3.4.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.0.0"
+  },
+  "dependencies": {
+    "@tryabby/core": "workspace:*"
+  }
+}
