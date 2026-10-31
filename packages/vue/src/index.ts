@@ -1,55 +1,76 @@
-// File: packages/vue/src/index.ts
-// Target Issue: https://github.com/tryabby/abby/issues/68
-// Author: Xuan Thinh (@thinhnx128) <thinhnx128@gmail.com>
-
+import { AbbyEventType, HttpService } from "@tryabby/core";
 import {
-  ref,
+  type App,
+  type ComputedRef,
+  type InjectionKey,
+  type Plugin,
   computed,
+  getCurrentInstance,
   inject,
-  provide,
   onMounted,
   onUnmounted,
-  getCurrentInstance,
-  type InjectionKey,
-  type ComputedRef,
-} from 'vue';
+  provide,
+  ref,
+} from "vue";
 
 export interface AbbyCoreClient<
   TConfig extends Record<string, any> = Record<string, any>,
   TFlag extends string = string,
   TTest extends string = string,
 > {
-  /** Core @tryabby/core method for selecting A/B test variants */
   getTestVariant?: (testId: TTest) => string;
-  /** Optional alias for custom/lightweight clients */
   getVariant?: (testId: TTest) => string;
-  /** Optional action callback for custom clients or @tryabby/core telemetry */
   onAct?: (testId: TTest, selectedVariant?: string) => void;
+  getConfig?: () => {
+    projectId: string;
+    apiUrl?: string;
+    currentEnvironment?: string;
+  };
   getFeatureFlag: (flagKey: TFlag) => boolean;
-  getRemoteConfig: <K extends Extract<keyof TConfig, string>>(configKey: K) => TConfig[K];
+  getRemoteConfig: <K extends Extract<keyof TConfig, string>>(
+    configKey: K
+  ) => TConfig[K];
   subscribe?: (listener: (data?: any) => void) => () => void;
 }
 
-const ABBY_INJECTION_KEY: InjectionKey<AbbyCoreClient<any, any, any>> = Symbol('AbbyVueClient');
+export const ABBY_INJECTION_KEY: InjectionKey<AbbyCoreClient<any, any, any>> =
+  Symbol("AbbyVueClient");
 
-function resolveTestVariant<TConfig extends Record<string, any>, TFlag extends string, TTest extends string>(
-  client: AbbyCoreClient<TConfig, TFlag, TTest>,
-  testId: TTest
-): string {
-  if (typeof client.getTestVariant === 'function') {
-    return client.getTestVariant(testId) ?? '';
+function resolveTestVariant<
+  TConfig extends Record<string, any>,
+  TFlag extends string,
+  TTest extends string,
+>(client: AbbyCoreClient<TConfig, TFlag, TTest>, testId: TTest): string {
+  if (typeof client.getTestVariant === "function") {
+    return client.getTestVariant(testId) ?? "";
   }
-  if (typeof client.getVariant === 'function') {
-    return client.getVariant(testId) ?? '';
+  if (typeof client.getVariant === "function") {
+    return client.getVariant(testId) ?? "";
   }
-  throw new Error('[@tryabby/vue] Provided Abby client must implement getTestVariant(testId) or getVariant(testId).');
+  throw new Error(
+    "[@tryabby/vue] Provided Abby client must implement getTestVariant(testId) or getVariant(testId)."
+  );
+}
+
+export function createAbbyPlugin<
+  TConfig extends Record<string, any> = Record<string, any>,
+  TFlag extends string = string,
+  TTest extends string = string,
+>(client: AbbyCoreClient<TConfig, TFlag, TTest>): Plugin {
+  return {
+    install(app: App) {
+      app.provide(ABBY_INJECTION_KEY, client);
+    },
+  };
 }
 
 export function provideAbby<
   TConfig extends Record<string, any> = Record<string, any>,
   TFlag extends string = string,
   TTest extends string = string,
->(client: AbbyCoreClient<TConfig, TFlag, TTest>): AbbyCoreClient<TConfig, TFlag, TTest> {
+>(
+  client: AbbyCoreClient<TConfig, TFlag, TTest>
+): AbbyCoreClient<TConfig, TFlag, TTest> {
   provide(ABBY_INJECTION_KEY, client);
   return client;
 }
@@ -61,15 +82,13 @@ export function useAbbyClient<
 >(): AbbyCoreClient<TConfig, TFlag, TTest> {
   const client = inject(ABBY_INJECTION_KEY);
   if (!client) {
-    throw new Error('[@tryabby/vue] Abby client not found. Please call provideAbby(client) in a parent component.');
+    throw new Error(
+      "[@tryabby/vue] Abby client not found. Register via app.use(createAbbyPlugin(client)) or provideAbby(client)."
+    );
   }
   return client as AbbyCoreClient<TConfig, TFlag, TTest>;
 }
 
-/**
- * Returns the currently selected variant for a given A/B test along with the onAct trigger.
- * Keeps initial variant empty ("") until mounted to prevent SSR/Nuxt hydration mismatches.
- */
 export function useAbby<TTest extends string = string>(
   testId: TTest
 ): {
@@ -85,7 +104,7 @@ export function useAbby<TTest extends string = string>(
   if (getCurrentInstance()) {
     onMounted(() => {
       isMounted.value = true;
-      if (typeof client.subscribe === 'function') {
+      if (typeof client.subscribe === "function") {
         unsubscribe = client.subscribe(() => {
           version.value += 1;
         });
@@ -99,9 +118,8 @@ export function useAbby<TTest extends string = string>(
 
   const variant = computed(() => {
     void version.value;
-    // Render empty string before client mount to avoid SSR/hydration markup mismatch
     if (!isMounted.value) {
-      return '';
+      return "";
     }
     return resolveTestVariant(client, testId);
   });
@@ -109,25 +127,38 @@ export function useAbby<TTest extends string = string>(
   const onAct = () => {
     const currentVariant = variant.value;
     if (!currentVariant) return;
-    if (typeof client.onAct === 'function') {
+    if (typeof client.onAct === "function") {
       client.onAct(testId, currentVariant);
+      return;
+    }
+    const cfg =
+      typeof client.getConfig === "function" ? client.getConfig() : undefined;
+    if (cfg?.projectId) {
+      HttpService.sendData({
+        url: cfg.apiUrl,
+        type: AbbyEventType.ACT,
+        data: {
+          projectId: cfg.projectId,
+          selectedVariant: currentVariant,
+          testName: testId,
+        },
+      });
     }
   };
 
   return { variant, onAct };
 }
 
-/**
- * Returns the reactive boolean state of the specified feature flag.
- */
-export function useFeatureFlag<TFlag extends string = string>(flagKey: TFlag): ComputedRef<boolean> {
+export function useFeatureFlag<TFlag extends string = string>(
+  flagKey: TFlag
+): ComputedRef<boolean> {
   const client = useAbbyClient<Record<string, any>, TFlag, string>();
   const version = ref(0);
 
   let unsubscribe: (() => void) | undefined;
   if (getCurrentInstance()) {
     onMounted(() => {
-      if (typeof client.subscribe === 'function') {
+      if (typeof client.subscribe === "function") {
         unsubscribe = client.subscribe(() => {
           version.value += 1;
         });
@@ -145,9 +176,6 @@ export function useFeatureFlag<TFlag extends string = string>(flagKey: TFlag): C
   });
 }
 
-/**
- * Returns the reactive value of a remote configuration key with its type strictly derived from TConfig[K].
- */
 export function useRemoteConfig<
   TConfig extends Record<string, any> = Record<string, any>,
   K extends Extract<keyof TConfig, string> = Extract<keyof TConfig, string>,
@@ -158,7 +186,7 @@ export function useRemoteConfig<
   let unsubscribe: (() => void) | undefined;
   if (getCurrentInstance()) {
     onMounted(() => {
-      if (typeof client.subscribe === 'function') {
+      if (typeof client.subscribe === "function") {
         unsubscribe = client.subscribe(() => {
           version.value += 1;
         });
@@ -174,4 +202,19 @@ export function useRemoteConfig<
     void version.value;
     return client.getRemoteConfig(configKey);
   });
+}
+
+export function createAbbyVue<
+  TConfig extends Record<string, any> = Record<string, any>,
+  TFlag extends string = string,
+  TTest extends string = string,
+>(client: AbbyCoreClient<TConfig, TFlag, TTest>) {
+  return {
+    plugin: createAbbyPlugin(client),
+    provideAbby: () => provideAbby(client),
+    useAbby: (testId: TTest) => useAbby<TTest>(testId),
+    useFeatureFlag: (flagKey: TFlag) => useFeatureFlag<TFlag>(flagKey),
+    useRemoteConfig: <K extends Extract<keyof TConfig, string>>(configKey: K) =>
+      useRemoteConfig<TConfig, K>(configKey),
+  };
 }
