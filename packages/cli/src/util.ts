@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { type AbbyConfig, abbyConfigSchema } from "@tryabby/core";
@@ -71,23 +72,42 @@ export function multiLineLog(...args: any[]) {
 
 export async function startServerAndGetToken(host?: string) {
   const freePort = await portFinder.getPortPromise();
+  const expectedState = crypto.randomBytes(32).toString("hex");
 
   const url = new URL(host ?? ABBY_BASE_URL);
+  const allowedOrigin = url.origin;
   url.pathname = "/profile/generate-token";
-  url.searchParams.set("callbackUrl", `http://localhost:${freePort}`);
+
+  const callbackUrl = new URL(`http://127.0.0.1:${freePort}`);
+  callbackUrl.searchParams.set("state", expectedState);
+  url.searchParams.set("callbackUrl", callbackUrl.toString());
+  url.searchParams.set("state", expectedState);
   console.log(`Please open the following URL in your Browser: ${url}`);
 
   return new Promise<string>((resolve) => {
     const server = polka()
       .use(
         cors({
-          origin: "*",
+          origin: allowedOrigin,
           methods: ["GET"],
         })
       )
       .get("/", (req, res) => {
         const token = req.query.token;
-        if (typeof token !== "string") {
+        const state = req.query.state;
+        const stateBuf = typeof state === "string" ? Buffer.from(state) : null;
+        const expectedBuf = Buffer.from(expectedState);
+        const isValidState =
+          stateBuf !== null &&
+          stateBuf.length === expectedBuf.length &&
+          crypto.timingSafeEqual(stateBuf, expectedBuf);
+
+        if (!isValidState) {
+          res.statusCode = 403;
+          res.end("Invalid or missing OAuth state parameter");
+          return;
+        }
+        if (typeof token !== "string" || token.trim().length === 0) {
           res.statusCode = 400;
           res.end("Invalid token");
           return;
@@ -98,7 +118,7 @@ export async function startServerAndGetToken(host?: string) {
         server.server?.close();
         resolve(token);
       })
-      .listen(freePort);
+      .listen(freePort, "127.0.0.1");
 
     process.on("SIGTERM", () => {
       server.server?.closeAllConnections();

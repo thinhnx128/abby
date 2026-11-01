@@ -7,7 +7,9 @@ export const tokenFileSchema = z.object({
 });
 
 export function writeTokenFile(token: string) {
-  return fs.writeFile(getTokenFilePath(), JSON.stringify({ token }));
+  return fs.writeFile(getTokenFilePath(), JSON.stringify({ token }), {
+    mode: 0o600,
+  });
 }
 
 export async function getToken() {

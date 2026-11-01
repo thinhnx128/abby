@@ -39,8 +39,11 @@ export class ZoneCache<TNamespaces extends Record<string, unknown>> {
     key: string,
     cacheBuster = "v1"
   ): URL {
+    const safeBuster = encodeURIComponent(cacheBuster);
+    const safeNamespace = encodeURIComponent(String(namespace));
+    const safeKey = encodeURIComponent(key);
     return new URL(
-      `https://${this.config.domain}/cache/${cacheBuster}/${String(namespace)}/${key}`
+      `https://${this.config.domain}/cache/${safeBuster}/${safeNamespace}/${safeKey}`
     );
   }
 

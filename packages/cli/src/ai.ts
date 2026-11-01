@@ -43,6 +43,7 @@ export async function removeFlagInstance(options: {
     files: filesToUse,
     flagName: options.flagName,
     apiUrl: options.host,
+    workspaceRoot: path.resolve(options.path),
   });
 
   let updatedFileCount = filesToUse.length;

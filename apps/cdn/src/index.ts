@@ -19,6 +19,15 @@ const cache = new ZoneCache<{
 
 const configCache = new ConfigService(cache);
 
+export function safeSerializeForScript(data: unknown): string {
+  return JSON.stringify(data)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/\//g, "\\u002f")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
 const app = new Hono()
   .use(
     "*",
@@ -54,11 +63,12 @@ const app = new Hono()
 
     c.header("x-abby-cache", reason);
 
-    const script = `window.${ABBY_WINDOW_KEY} = ${JSON.stringify(data)};`;
+    const script = `window.${ABBY_WINDOW_KEY} = ${safeSerializeForScript(data)};`;
 
     return c.text(script, {
       headers: {
-        "Content-Type": "application/javascript",
+        "Content-Type": "application/javascript; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   });
