@@ -3,9 +3,6 @@
   "compilerOptions": {
     "baseUrl": ".",
     "lib": ["ESNext", "DOM"],
-    "paths": {
-      "vue": ["./src/vue-runtime.ts"]
-    },
     "types": ["vitest/globals"]
   }
 }
